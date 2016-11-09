@@ -29,7 +29,6 @@ function axial_to_position(q, r, size) {
     };
 }
 
-
 var GameObj = function() {};
 GameObj.prototype = {
     tiles: {},
@@ -50,7 +49,7 @@ GameObj.prototype = {
             for(var r = -radius; r <= radius; r++) {
                 if(Math.abs(q + r) > radius)
                     continue;
-                
+
                 var position = axial_to_position(q, r, gameOptions.tileSize),
                     x = position.x + xCenter,
                     y = position.y + yCenter,
@@ -61,9 +60,8 @@ GameObj.prototype = {
                     tile.state = 1;
                     tile.tint = gameOptions.tilesTint[tile.state];
                 }
-                
+
                 tile.coords = { q: q, r: r };
-                console.log({q: q, r: r, tile: tile});
                 this.tiles[q][r] = tile;
             }
         }
@@ -81,19 +79,18 @@ GameObj.prototype = {
             r = tile.coords.r;
         for(var dq = -1; dq <= 1; dq ++) {
             for(var dr = -1; dr <= 1; dr ++) {
-                if(Math.abs(dq + dr) > 1 ||
-                        dq + q < 0 ||
-                        dq + q > this.tiles.length ||
-                        dr + r < 0 ||
-                        dr + r > this.tiles[q].length)
+                if((dq == 0 && dr == 0) ||
+                        Math.abs(dq + dr) > 1 ||
+                        this.tiles[dq + q] == undefined ||
+                        this.tiles[dq + q][dr + r] == undefined)
                     continue;
-                neighbors.push(this.tiles[q][r]);
+                neighbors.push(this.tiles[dq + q][dr + r]);
             }
-        } 
+        }
+        return neighbors;
     },
     clickTile: function(tile) {
-        console.log(this);
         this.incrementTileState(tile);
-        this.getTileNeighbors(tile).each(this.incrementTileState);
+        this.getTileNeighbors(tile).forEach(this.incrementTileState);
     }
 };
