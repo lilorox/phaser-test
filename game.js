@@ -37,7 +37,9 @@ GameObj.prototype = {
         game.scale.pageAlignHorizontally = true;
         game.scale.pageAlignVertically = true;
         game.stage.disableVisibilityChange = true;
-        game.load.image("hex", "tile.png");
+        //game.load.image('hex', 'tile.png');
+        game.load.image('hex', 'tile.png');
+        game.load.spritesheet('hex', 'tile_anim.png', 100, 100);
     },
     create: function() {
         var radius = 6,
@@ -54,6 +56,8 @@ GameObj.prototype = {
                     x = position.x + xCenter,
                     y = position.y + yCenter,
                     tile = game.add.button(x, y, 'hex', this.clickTile, this);
+                tile.animations.add('rotate_start', [0, 1, 2], true);
+                tile.animations.add('rotate_finish', [2, 1, 0], true);
                 tile.anchor.setTo(0.5, 0.5);
                 tile.state = 0;
                 if(q == 0 && r == 0) {
@@ -70,8 +74,10 @@ GameObj.prototype = {
     },
 
     incrementTileState: function(tile) {
+        tile.animations.play('rotate_start');
         tile.state = (tile.state + 1) % gameOptions.tilesTint.length;
         tile.tint = gameOptions.tilesTint[tile.state];
+        tile.animations.play('rotate_finish');
     },
     getTileNeighbors: function(tile) {
         var neighbors = [],
