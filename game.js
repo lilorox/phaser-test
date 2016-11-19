@@ -12,7 +12,7 @@ var game,
         minRadius: 3,
         maxRadius: 10,
         radius: 6,
-        minesCount: 30
+        minesCount: 10
     },
     gameSize,
     gui;
@@ -51,8 +51,8 @@ var Tile = function(game, q, r, key, callback, callbackContext, hasMine) {
     this.neighboringMines = 0;
     this.tint = gameOptions.tilesTint[this.state];
     /* XXX DEBUG */
-    //if(this.hasMine)
-        //this.setText("x");
+    if(this.hasMine)
+        this.setText("x");
     this.animations.add('flip_start', [0, 1, 2], true);
     this.animations.add('flip_finish', [2, 1, 0], true);
     this.anchor.setTo(0.5, 0.5);
@@ -65,7 +65,7 @@ Tile.prototype.setState = function(newState) {
     this.tint = gameOptions.tilesTint[newState];
     this.animations.play('flip_finish', 15);
     this.state = newState;
-    
+
     if(newState == 'normal')
         this.clearText();
     else if(newState == 'flagged')
@@ -106,11 +106,14 @@ Tile.prototype.clearText = function(text) {
 
 var GameObj = function() {
     this.minesCount = gameOptions.minesCount;
-    this.gameLost = false;
+    this.gameIsOver = false;
+    this.radius = gameOptions.radius;
+    this.tiles = [];
+
+    this.tilesGroup = undefined;
+    this.textGroup = undefined;
 };
 GameObj.prototype = {
-    radius: gameOptions.radius,
-    tiles: [],
     preload: function() {
         game.scale.scaleMode = Phaser.ScaleManager.SHOW_ALL;
         game.scale.pageAlignHorizontally = true;
@@ -134,8 +137,11 @@ GameObj.prototype = {
         guiGame.open();
     },
     initGame: function() {
-        this.gameLost = false;
+        this.gameIsOver = false;
+        this.tilesGroup = game.add.group();
         this.createTiles();
+
+        this.textGroup = game.add.group();
     },
     createTiles: function() {
         // Find mine placement by randomizing the index of the tile
@@ -167,21 +173,21 @@ GameObj.prototype = {
         }
 
         // Go through the mines and count the number of neighboring mines
-        ( function(gameObj) {
-            gameObj.forEachTile(function(tile) {
-                if(tile.hasMine)
-                    return;
+        for(var i = 0; i < this.tiles.length; i ++) {
+            for(var j = 0; j < this.tiles[i].length; j ++) {
+                if(this.tiles[i][j].hasMine)
+                    continue;
 
-                var neighbors = gameObj.getTileNeighbors(tile),
+                var neighbors = this.getTileNeighbors(this.tiles[i][j]),
                     count = 0;
                 for(var k = 0; k < neighbors.length; k ++) {
                     if(neighbors[k].hasMine)
                         count ++;
                 }
-                tile.neighboringMines = count;
-                //tile.setText(count); // XXX DEBUG
-            });
-        })(this);
+                this.tiles[i][j].neighboringMines = count;
+                //this.tiles[i][j].setText(count); // XXX DEBUG
+            }
+        }
     },
     axialToStoragePosition: function(q, r) {
         return {
@@ -198,6 +204,8 @@ GameObj.prototype = {
             this.tiles[pos.i] = new Array(this.radius * 2 - Math.abs(r) + 1);
         }
         this.tiles[pos.i][pos.j] = tile;
+
+        this.tilesGroup.add(tile);
     },
     getTile: function(q, r) {
         var pos = this.axialToStoragePosition(q, r);
@@ -205,17 +213,6 @@ GameObj.prototype = {
             return undefined;
         }
         return this.tiles[pos.i][pos.j];
-    },
-    forEachTile: function(callback, interruptValue) {
-        interruptValue = (interruptValue == undefined ? "improbable" : interruptValue);
-
-        for(var i = 0; i < this.tiles.length; i ++) {
-            for(var j = 0; j < this.tiles[i].length; j ++) {
-                var returnValue = callback(this.tiles[i][j]);
-                if(returnValue === interruptValue)
-                    return;
-            }
-        }
     },
     deleteTiles: function() {
         for(var i = this.tiles.length - 1; i >= 0; i--) {
@@ -229,15 +226,12 @@ GameObj.prototype = {
     },
     newGame: function() {
         this.deleteTiles();
+        this.tilesGroup.delete(true);
+        this.textGroup.delete(true);
+
         gameSize = gameOptions.tileWidth * (this.radius * 2 + 1);
         game.scale.setGameSize(gameSize, gameSize);
-        this.createTiles();
-    },
-    incrementTileState: function(tile) {
-        tile.animations.play('flip_start', 15);
-        tile.state = (tile.state + 1) % gameOptions.tilesTint.length;
-        tile.tint = gameOptions.tilesTint[tile.state];
-        tile.animations.play('flip_finish', 15);
+        this.initGame();
     },
     getTileNeighbors: function(tile) {
         var neighbors = [],
@@ -256,15 +250,14 @@ GameObj.prototype = {
         return neighbors;
     },
     clickTile: function(tile, evt) {
-        if(this.gameLost || tile.state == 'discovered')
+        if(this.gameIsOver || tile.state == 'discovered')
             return;
 
         if(evt.button == 0) {
             // Left click: dig this tile
             if(tile.hasMine) {
-                console.log("lost");
                 tile.setState('oops');
-                this.gameLost = true;
+                this.gameOver(false);
                 return;
             }
             if(tile.state != 'discovered')
@@ -278,6 +271,8 @@ GameObj.prototype = {
             else if(tile.state == 'maybe')
                 tile.setState('normal');
         }
+
+        this.checkEndOfGame();
     },
     discoverTile: function(tile) {
         tile.setState('discovered');
@@ -293,5 +288,62 @@ GameObj.prototype = {
                 this.discoverTile(neighbors[i]);
             }
         }
+    },
+    checkEndOfGame: function() {
+        var endGame = true;
+        for(var i = 0; i < this.tiles.length && endGame; i ++) {
+            for(var j = 0; j < this.tiles[i].length; j ++) {
+                var tile = this.tiles[i][j];
+                if(tile.hasMine && tile.state != 'flagged' ||
+                        ! tile.hasMine && tile.state != 'discovered') {
+                    endGame = false;
+                    break;
+                }
+            }
+        }
+
+        if(endGame)
+            this.gameOver(endGame);
+    },
+    revealMines: function() {
+    },
+    gameOver: function(won) {
+        this.gameIsOver = true;
+
+        var text = 'You won!',
+            fill = '#fff';
+
+        if(! won) {
+            console.log("lost");
+            text = 'You lost! :(';
+            fill = '#ff0000';
+            this.revealMines();
+        } else {
+            console.log("won");
+        }
+
+        var bar = game.add.graphics();
+        bar.beginFill(0x000000, 0.2);
+        bar.drawRect(
+            0, gameSize / 4,
+            gameSize, gameSize / 2
+        );
+        this.textGroup.add(bar);
+
+        var text = game.add.text(
+            gameSize / 2,
+            gameSize / 2,
+            text,
+            {
+                font: "bold 32px Arial",
+                fill: fill,
+                boundsAlignH: "center",
+                boundsAlignV: "middle"
+            }
+        );
+        text.setShadow(3, 3, 'rgba(0, 0, 0, 0.5)', 2);
+        text.anchor.x = 0.5;
+        text.anchor.y = 0.5;
+        this.textGroup.add(text);
     }
 };
